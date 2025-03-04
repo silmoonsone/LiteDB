@@ -245,7 +245,7 @@ namespace LiteDB
             }
             else if(value.IsString)
             {
-                ObjectId val = null;
+                ObjectId val = default;
                 var isObjectId = false;
 
                 try

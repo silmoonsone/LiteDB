@@ -10,12 +10,13 @@ namespace LiteDB
     /// <summary>
     /// Represent a 12-bytes BSON type used in document Id
     /// </summary>
-    public class ObjectId : IComparable<ObjectId>, IEquatable<ObjectId>
+    public struct ObjectId : IComparable<ObjectId>, IEquatable<ObjectId>
     {
+        private static readonly ObjectId Zero = new ObjectId();
         /// <summary>
         /// A zero 12-bytes ObjectId
         /// </summary>
-        public static ObjectId Empty => new ObjectId();
+        public static ObjectId Empty => Zero;
 
         #region Properties
 
@@ -99,24 +100,24 @@ namespace LiteDB
         {
             if (bytes == null) throw new ArgumentNullException(nameof(bytes));
 
-            this.Timestamp = 
-                (bytes[startIndex + 0] << 24) + 
-                (bytes[startIndex + 1] << 16) + 
-                (bytes[startIndex + 2] << 8) + 
+            this.Timestamp =
+                (bytes[startIndex + 0] << 24) +
+                (bytes[startIndex + 1] << 16) +
+                (bytes[startIndex + 2] << 8) +
                 bytes[startIndex + 3];
 
-            this.Machine = 
-                (bytes[startIndex + 4] << 16) + 
-                (bytes[startIndex + 5] << 8) + 
+            this.Machine =
+                (bytes[startIndex + 4] << 16) +
+                (bytes[startIndex + 5] << 8) +
                 bytes[startIndex + 6];
 
             this.Pid = (short)
-                ((bytes[startIndex + 7] << 8) + 
+                ((bytes[startIndex + 7] << 8) +
                 bytes[startIndex + 8]);
 
-            this.Increment = 
-                (bytes[startIndex + 9] << 16) + 
-                (bytes[startIndex + 10] << 8) + 
+            this.Increment =
+                (bytes[startIndex + 9] << 16) +
+                (bytes[startIndex + 10] << 8) +
                 bytes[startIndex + 11];
         }
 
@@ -149,7 +150,7 @@ namespace LiteDB
         /// </summary>
         public bool Equals(ObjectId other)
         {
-            return other != null && 
+            return other != null &&
                 this.Timestamp == other.Timestamp &&
                 this.Machine == other.Machine &&
                 this.Pid == other.Pid &&
@@ -161,7 +162,15 @@ namespace LiteDB
         /// </summary>
         public override bool Equals(object other)
         {
-            return Equals(other as ObjectId);
+            if (other is ObjectId id)
+            {
+                return Equals(id);
+            }
+            //else if (other is string str)
+            //{
+            //    return Equals(new ObjectId(str));
+            //}
+            return false;
         }
 
         /// <summary>
@@ -233,8 +242,8 @@ namespace LiteDB
 
         public static bool operator ==(ObjectId lhs, ObjectId rhs)
         {
-            if (lhs is null) return rhs is null;
-            if (rhs is null) return false; // don't check type because sometimes different types can be ==
+            //if (lhs is null) return rhs is null;
+            //if (rhs is null) return false; // don't check type because sometimes different types can be ==
 
             return lhs.Equals(rhs);
         }
