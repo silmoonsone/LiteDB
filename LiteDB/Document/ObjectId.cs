@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Security;
@@ -120,6 +121,9 @@ namespace LiteDB
                 bytes[startIndex + 11];
         }
 
+        private const int ObjectIdByteLength = 12;
+        private const int ObjectIdStringLength = ObjectIdByteLength * 2;
+
         /// <summary>
         /// Convert hex value string in byte array
         /// </summary>
@@ -128,7 +132,7 @@ namespace LiteDB
             if (TryParseHex(value, out var bytes)) return bytes;
 
             if (string.IsNullOrEmpty(value)) throw new ArgumentNullException(nameof(value));
-            if (value.Length != 24) throw new ArgumentException(string.Format("ObjectId strings should be 24 hex characters, got {0} : \"{1}\"", value.Length, value));
+            if (value.Length != ObjectIdStringLength) throw new ArgumentException(string.Format("ObjectId strings should be 24 hex characters, got {0} : \"{1}\"", value.Length, value));
 
             throw new FormatException(string.Format("ObjectId string contains non-hexadecimal characters: \"{0}\"", value));
         }
@@ -194,32 +198,88 @@ namespace LiteDB
         /// </summary>
         public void ToByteArray(byte[] bytes, int startIndex)
         {
-            bytes[startIndex + 0] = (byte)(this.Timestamp >> 24);
-            bytes[startIndex + 1] = (byte)(this.Timestamp >> 16);
-            bytes[startIndex + 2] = (byte)(this.Timestamp >> 8);
-            bytes[startIndex + 3] = (byte)(this.Timestamp);
-            bytes[startIndex + 4] = (byte)(this.Machine >> 16);
-            bytes[startIndex + 5] = (byte)(this.Machine >> 8);
-            bytes[startIndex + 6] = (byte)(this.Machine);
-            bytes[startIndex + 7] = (byte)(this.Pid >> 8);
-            bytes[startIndex + 8] = (byte)(this.Pid);
-            bytes[startIndex + 9] = (byte)(this.Increment >> 16);
-            bytes[startIndex + 10] = (byte)(this.Increment >> 8);
-            bytes[startIndex + 11] = (byte)(this.Increment);
+            this.WriteBytes(bytes.AsSpan(startIndex, ObjectIdByteLength));
         }
 
         public byte[] ToByteArray()
         {
-            var bytes = new byte[12];
+            var bytes = new byte[ObjectIdByteLength];
 
-            this.ToByteArray(bytes, 0);
+            this.WriteBytes(bytes);
 
             return bytes;
         }
 
         public override string ToString()
         {
-            return BitConverter.ToString(this.ToByteArray()).Replace("-", "").ToLower();
+#if NET8_0_OR_GREATER
+            return string.Create(ObjectIdStringLength, this, static (chars, objectId) =>
+            {
+                Span<byte> buffer = stackalloc byte[ObjectIdByteLength];
+
+                objectId.WriteBytes(buffer);
+                WriteHexLower(buffer, chars);
+            });
+#else
+            Span<byte> buffer = stackalloc byte[ObjectIdByteLength];
+
+            this.WriteBytes(buffer);
+
+            var rented = ArrayPool<char>.Shared.Rent(ObjectIdStringLength);
+
+            try
+            {
+                var chars = rented.AsSpan(0, ObjectIdStringLength);
+                WriteHexLower(buffer, chars);
+
+                return new string(rented, 0, ObjectIdStringLength);
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(rented);
+            }
+#endif
+        }
+
+        private void WriteBytes(Span<byte> destination)
+        {
+            if (destination.Length < ObjectIdByteLength)
+            {
+                throw new ArgumentException("Destination span is too short.", nameof(destination));
+            }
+
+            destination[0] = (byte)(this.Timestamp >> 24);
+            destination[1] = (byte)(this.Timestamp >> 16);
+            destination[2] = (byte)(this.Timestamp >> 8);
+            destination[3] = (byte)(this.Timestamp);
+            destination[4] = (byte)(this.Machine >> 16);
+            destination[5] = (byte)(this.Machine >> 8);
+            destination[6] = (byte)(this.Machine);
+            destination[7] = (byte)(this.Pid >> 8);
+            destination[8] = (byte)(this.Pid);
+            destination[9] = (byte)(this.Increment >> 16);
+            destination[10] = (byte)(this.Increment >> 8);
+            destination[11] = (byte)(this.Increment);
+        }
+
+        private static void WriteHexLower(ReadOnlySpan<byte> source, Span<char> destination)
+        {
+            if (destination.Length < ObjectIdStringLength)
+            {
+                throw new ArgumentException("Destination span is too short.", nameof(destination));
+            }
+
+            for (var i = 0; i < source.Length; i++)
+            {
+                var value = source[i];
+                destination[i * 2] = GetHexCharacter(value >> 4);
+                destination[i * 2 + 1] = GetHexCharacter(value & 0x0F);
+            }
+        }
+
+        private static char GetHexCharacter(int value)
+        {
+            return (char)(value < 10 ? '0' + value : 'a' + (value - 10));
         }
 
         #endregion

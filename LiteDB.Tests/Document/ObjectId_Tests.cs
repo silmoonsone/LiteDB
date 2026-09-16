@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using FluentAssertions;
+using LiteDB;
 using Xunit;
 
 namespace LiteDB.Tests.Document
@@ -110,5 +111,74 @@ namespace LiteDB.Tests.Document
 
             parse.Should().Throw<FormatException>();
         }
+        [Theory]
+        [InlineData("000000000000000000000000")]
+        [InlineData("0123456789abcdefABCDEF01")]
+        [InlineData("FFFFFFFFFFFFFFFFFFFFFFFF")]
+        public void ObjectId_Hex_RoundTrips_Valid_Values(string hex)
+        {
+            var objectId = new ObjectId(hex);
+            var formatted = objectId.ToString();
+
+            formatted.Should().Be(hex.ToLowerInvariant());
+            new ObjectId(formatted).Should().Be(objectId);
+        }
+
+        [Theory]
+        [InlineData("00000000000000000000000g")]
+        [InlineData("z123456789abcdefabcdef01")]
+        public void ObjectId_FromHex_Rejects_Invalid_Characters(string hex)
+        {
+            var parse = () => new ObjectId(hex);
+
+            parse.Should().Throw<FormatException>();
+        }
+
+#if NET8_0_OR_GREATER
+        [Fact]
+        public void ObjectId_ToString_Minimizes_Allocations()
+        {
+            var objectId = ObjectId.NewObjectId();
+
+            for (var i = 0; i < 10; i++)
+            {
+                objectId.ToString();
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var hex = objectId.ToString();
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            hex.Should().HaveLength(24);
+            allocated.Should().BeLessThan(128);
+        }
+
+        [Fact]
+        public void ObjectId_FromHex_Minimizes_Allocations()
+        {
+            var original = ObjectId.NewObjectId();
+            var hex = original.ToString();
+
+            for (var i = 0; i < 10; i++)
+            {
+                _ = new ObjectId(hex);
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var parsed = new ObjectId(hex);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            parsed.Should().Be(original);
+            allocated.Should().BeLessThan(220);
+        }
+#endif
     }
 }
